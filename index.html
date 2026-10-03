@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reelhouse</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#160f22;--panel:#231736;--text:#f3edf9;--muted:#a99bbd;--accent:#ffb454}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--text);font-family:'Bricolage Grotesque',system-ui,sans-serif}
+header{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;gap:16px;align-items:center;padding:14px 4vw;background:linear-gradient(var(--bg),transparent)}
+.logo{font-weight:800;font-size:1.4rem;color:var(--accent);margin-right:auto}
+header button,header input{font:inherit;color:var(--text);background:var(--panel);border:1px solid #3a2a55;border-radius:8px;padding:8px 12px}
+header button{cursor:pointer}
+.hero{min-height:75vh;display:flex;align-items:flex-end;padding:0 4vw 6vw;background-size:cover;background-position:center top}
+.hero-in{max-width:560px}
+.hero h1{font-size:clamp(2rem,6vw,3.6rem);font-weight:800;line-height:1.05}
+.hero p{margin:12px 0 18px;color:#e2d8ee;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.btn{font:inherit;font-weight:600;border:0;border-radius:8px;padding:10px 20px;margin-right:8px;cursor:pointer;background:var(--accent);color:#2a1700}
+.btn.alt{background:rgba(255,255,255,.18);color:var(--text)}
+.hero::after{content:"";position:absolute;left:0;right:0;height:0}
+.shade{background:linear-gradient(transparent 55%,var(--bg))}
+section{padding:0 4vw;margin-top:28px}
+h2{font-size:1.15rem;margin-bottom:10px}
+.row{display:flex;gap:10px;overflow-x:auto;padding-bottom:10px;scrollbar-width:thin}
+.card{flex:0 0 150px;border-radius:8px;overflow:hidden;cursor:pointer;background:var(--panel);transition:transform .15s}
+.card:hover,.card:focus-visible{transform:scale(1.06);outline:2px solid var(--accent)}
+.card img{display:block;width:100%;aspect-ratio:2/3;object-fit:cover}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.grid .card{flex:none}
+#modal{position:fixed;inset:0;background:rgba(10,5,18,.85);display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
+#modal.open{display:flex}
+.box{background:var(--panel);border-radius:12px;max-width:760px;width:100%;max-height:92vh;overflow:auto}
+.box .top{aspect-ratio:16/9;background:#000 center/cover}
+.box iframe{width:100%;height:100%;border:0}
+.info{padding:18px}
+.info h3{font-size:1.5rem}
+.meta{color:var(--muted);margin:6px 0 12px;font-size:.9rem}
+.info p{line-height:1.55}
+.msg{padding:120px 4vw;text-align:center;color:var(--muted)}
+.msg input{font:inherit;padding:10px;border-radius:8px;border:1px solid #3a2a55;background:var(--panel);color:var(--text);width:min(360px,80vw);margin:12px 0}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">Reelhouse</span>
+  <button id="listBtn">My List</button>
+  <input id="q" type="search" placeholder="Search movies">
+</header>
+<div id="app"></div>
+<div id="modal"><div class="box" id="box"></div></div>
+
+<script>
+// Free key: https://www.themoviedb.org/settings/api  (use the "API Key (v3 auth)")
+let KEY = localStorage.getItem('tmdb_key') || '';
+const API = 'https://api.themoviedb.org/3';
+const IMG = 'https://image.tmdb.org/t/p/';
+const $ = s => document.querySelector(s);
+const app = $('#app');
+
+const ROWS = [
+  ['Trending this week', '/trending/movie/week'],
+  ['Popular', '/movie/popular'],
+  ['Top rated', '/movie/top_rated'],
+  ['Action', '/discover/movie?with_genres=28'],
+  ['Comedy', '/discover/movie?with_genres=35'],
+  ['Horror', '/discover/movie?with_genres=27']
+];
+
+async function api(path) {
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(`${API}${path}${sep}api_key=${KEY}&language=en-US`);
+  if (!res.ok) throw new Error(res.status);
+  return res.json();
+}
+
+const getList = () => JSON.parse(localStorage.getItem('mylist') || '[]');
+const setList = l => localStorage.setItem('mylist', JSON.stringify(l));
+
+function card(m) {
+  if (!m.poster_path) return '';
+  return `<div class="card" tabindex="0" data-id="${m.id}"><img loading="lazy" src="${IMG}w342${m.poster_path}" alt="${m.title}"></div>`;
+}
+
+function askKey(err) {
+  app.innerHTML = `<div class="msg"><h2>${err ? 'That key did not work' : 'Add your TMDB API key'}</h2>
+  <p>Get a free key at themoviedb.org → Settings → API.</p>
+  <input id="k" placeholder="Paste API key (v3)"><br>
+  <button class="btn" id="saveKey">Save and load movies</button></div>`;
+  $('#saveKey').onclick = () => { KEY = $('#k').value.trim(); localStorage.setItem('tmdb_key', KEY); home(); };
+}
+
+async function home() {
+  if (!KEY) return askKey();
+  try {
+    const first = await api(ROWS[0][1]);
+    const pick = first.results.filter(m => m.backdrop_path)[0];
+    app.innerHTML = `<div class="hero" style="background-image:url(${IMG}w1280${pick.backdrop_path})">
+      <div class="shade" style="position:absolute;inset:0"></div>
+      <div class="hero-in" style="position:relative"><h1>${pick.title}</h1><p>${pick.overview}</p>
+      <button class="btn" data-id="${pick.id}">Watch trailer</button>
+      <button class="btn alt" data-add="${pick.id}">+ My List</button></div></div><div id="rows"></div>`;
+    const rows = $('#rows');
+    const data = await Promise.all(ROWS.map(r => api(r[1])));
+    rows.innerHTML = ROWS.map((r, i) => `<section><h2>${r[0]}</h2><div class="row">${data[i].results.map(card).join('')}</div></section>`).join('');
+  } catch (e) { askKey(true); }
+}
+
+async function search(term) {
+  if (!term) return home();
+  const d = await api('/search/movie?query=' + encodeURIComponent(term));
+  const items = d.results.map(card).join('');
+  app.innerHTML = `<section style="padding-top:80px"><h2>Results for "${term}"</h2>${items ? `<div class="grid">${items}</div>` : '<p class="meta">No matches. Try another title.</p>'}</section>`;
+}
+
+function showList() {
+  const l = getList();
+  app.innerHTML = `<section style="padding-top:80px"><h2>My List</h2>${l.length ? `<div class="grid">${l.map(card).join('')}</div>` : '<p class="meta">Nothing saved yet. Open a movie and press + My List.</p>'}</section>`;
+}
+
+async function openMovie(id) {
+  const m = await api(`/movie/${id}?append_to_response=videos`);
+  const trailer = (m.videos.results || []).find(v => v.site === 'YouTube' && v.type === 'Trailer');
+  const saved = getList().some(x => x.id === m.id);
+  $('#box').innerHTML = `<div class="top" style="background-image:url(${IMG}w780${m.backdrop_path || ''})">
+    ${trailer ? `<iframe src="https://www.youtube.com/embed/${trailer.key}?autoplay=1" allow="autoplay;fullscreen" allowfullscreen></iframe>` : ''}</div>
+    <div class="info"><h3>${m.title}</h3>
+    <div class="meta">${(m.release_date || '').slice(0, 4)} · ${m.runtime || '?'} min · ★ ${m.vote_average.toFixed(1)} · ${m.genres.map(g => g.name).join(', ')}</div>
+    <p>${m.overview || 'No description available.'}</p><br>
+    <button class="btn" id="toggle">${saved ? 'Remove from My List' : '+ My List'}</button>
+    <button class="btn alt" id="close">Close</button></div>`;
+  $('#modal').classList.add('open');
+  $('#close').onclick = closeModal;
+  $('#toggle').onclick = () => { toggleList(m); $('#toggle').textContent = getList().some(x => x.id === m.id) ? 'Remove from My List' : '+ My List'; };
+}
+
+function closeModal() { $('#modal').classList.remove('open'); $('#box').innerHTML = ''; }
+
+function toggleList(m) {
+  let l = getList();
+  l = l.some(x => x.id === m.id) ? l.filter(x => x.id !== m.id) : [...l, { id: m.id, title: m.title, poster_path: m.poster_path }];
+  setList(l);
+}
+
+document.addEventListener('click', async e => {
+  const add = e.target.closest('[data-add]');
+  if (add) { const m = await api('/movie/' + add.dataset.add); toggleList(m); add.textContent = '✓ Saved'; return; }
+  const c = e.target.closest('[data-id]');
+  if (c) openMovie(c.dataset.id);
+  if (e.target.id === 'modal') closeModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Enter' && e.target.classList.contains('card')) openMovie(e.target.dataset.id);
+});
+let t;
+$('#q').addEventListener('input', e => { clearTimeout(t); t = setTimeout(() => search(e.target.value.trim()), 400); });
+$('#listBtn').onclick = showList;
+$('.logo').onclick = home;
+home();
+</script>
+</body>
+</html>
